@@ -1,15 +1,19 @@
 package lightGin
 
-import  "github.com/YoJn/lightGin/internal/common/binding"
+import  "github.com/YoJn/lightGin/internal/common"
 
 const (
-	MIMEJSON              = binding.MIMEJSON
-	MIMEHTML              = binding.MIMEHTML
-	MIMEXML               = binding.MIMEXML
-	MIMEXML2              = binding.MIMEXML2
-	MIMEPlain             = binding.MIMEPlain
-	MIMEPOSTForm          = binding.MIMEPOSTForm
-	MIMEMultipartPOSTForm = binding.MIMEMultipartPOSTForm
-	MIMEYAML              = binding.MIMEYAML
-	BodyBytesKey          = "_gin-gonic/gin/bodybyteskey"
+	MIMEJSON              = common.MIMEJSON
+	MIMEHTML              = common.MIMEHTML
+	MIMEXML               = common.MIMEXML
+	MIMEXML2              = common.MIMEXML2
+	MIMEPlain             = common.MIMEPlain
+	MIMEPOSTForm          = common.MIMEPOSTForm
+	MIMEMultipartPOSTForm = common.MIMEMultipartPOSTForm
+	MIMEYAML              = common.MIMEYAML
+	BodyBytesKey          = "_yojn/lightGin/babibabu"
 )
+
+type Context struct {
+
+}

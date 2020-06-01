@@ -23,7 +23,17 @@
             <set />
           </value>
         </entry>
+        <entry key="$PROJECT_DIR$/internal/common/reponse_writer.go">
+          <value>
+            <set />
+          </value>
+        </entry>
         <entry key="$PROJECT_DIR$/mian.go">
+          <value>
+            <set />
+          </value>
+        </entry>
+        <entry key="E:/go_projects/gin-master/response_writer.go">
           <value>
             <set />
           </value>
