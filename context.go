@@ -1,6 +1,10 @@
 package lightGin
 
-import  "github.com/YoJn/lightGin/internal/common"
+import (
+	"net/http"
+
+	"github.com/YoJn/lightGin/internal/common"
+)
 
 const (
 	MIMEJSON              = common.MIMEJSON
@@ -15,5 +19,7 @@ const (
 )
 
 type Context struct {
-
+	writerEntity common.ResponseWriterEntity
+	Request      *http.Request
+	Writer       common.ResponseWriter
 }
