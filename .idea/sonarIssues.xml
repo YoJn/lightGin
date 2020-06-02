@@ -28,7 +28,27 @@
             <set />
           </value>
         </entry>
+        <entry key="$PROJECT_DIR$/internal/common/utils.go">
+          <value>
+            <set />
+          </value>
+        </entry>
         <entry key="$PROJECT_DIR$/mian.go">
+          <value>
+            <set />
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/render/json.go">
+          <value>
+            <set />
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/render/render.go">
+          <value>
+            <set />
+          </value>
+        </entry>
+        <entry key="E:/go_projects/gin-master/errors.go">
           <value>
             <set />
           </value>
