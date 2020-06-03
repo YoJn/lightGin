@@ -28,6 +28,13 @@ func (ps Params) ByName(name string) (va string) {
 	return
 }
 
+type MethodTree struct {
+	Method string
+	Root   *node
+}
+
+type MethodTrees []MethodTree
+
 type nodeType uint8
 
 // 路由类型 比如 /device/{id}
