@@ -6,6 +6,8 @@ import (
 	"math"
 	"net/http"
 	"net/url"
+	"strings"
+	"time"
 
 	"github.com/YoJn/lightGin/internal/common"
 )
@@ -29,6 +31,7 @@ type Context struct {
 	Request      *http.Request
 	Writer       common.ResponseWriter
 
+	Params   common.Params
 	handlers HandlersChain
 	fullPath string
 	index    int8
@@ -151,6 +154,212 @@ func (c *Context) Header(key, value string) {
 
 func (c *Context) requestHeader(key string) string {
 	return c.Request.Header.Get(key)
+}
+
+// Get returns the value for the given key, ie: (value, true).
+// If the value does not exists it returns (nil, false)
+func (c *Context) Get(key string) (value interface{}, exists bool) {
+	value, exists = c.Keys[key]
+	return
+}
+
+// MustGet returns the value for the given key if it exists, otherwise it panics.
+func (c *Context) MustGet(key string) interface{} {
+	if value, exists := c.Get(key); exists {
+		return value
+	}
+	panic("Key \"" + key + "\" does not exist")
+}
+
+// GetString returns the value associated with the key as a string.
+func (c *Context) GetString(key string) (s string) {
+	if val, ok := c.Get(key); ok && val != nil {
+		s, _ = val.(string)
+	}
+	return
+}
+
+// GetBool returns the value associated with the key as a boolean.
+func (c *Context) GetBool(key string) (b bool) {
+	if val, ok := c.Get(key); ok && val != nil {
+		b, _ = val.(bool)
+	}
+	return
+}
+
+// GetInt returns the value associated with the key as an integer.
+func (c *Context) GetInt(key string) (i int) {
+	if val, ok := c.Get(key); ok && val != nil {
+		i, _ = val.(int)
+	}
+	return
+}
+
+// GetInt64 returns the value associated with the key as an integer.
+func (c *Context) GetInt64(key string) (i64 int64) {
+	if val, ok := c.Get(key); ok && val != nil {
+		i64, _ = val.(int64)
+	}
+	return
+}
+
+// GetFloat64 returns the value associated with the key as a float64.
+func (c *Context) GetFloat64(key string) (f64 float64) {
+	if val, ok := c.Get(key); ok && val != nil {
+		f64, _ = val.(float64)
+	}
+	return
+}
+
+// GetTime returns the value associated with the key as time.
+func (c *Context) GetTime(key string) (t time.Time) {
+	if val, ok := c.Get(key); ok && val != nil {
+		t, _ = val.(time.Time)
+	}
+	return
+}
+
+// GetDuration returns the value associated with the key as a duration.
+func (c *Context) GetDuration(key string) (d time.Duration) {
+	if val, ok := c.Get(key); ok && val != nil {
+		d, _ = val.(time.Duration)
+	}
+	return
+}
+
+// GetStringSlice returns the value associated with the key as a slice of strings.
+func (c *Context) GetStringSlice(key string) (ss []string) {
+	if val, ok := c.Get(key); ok && val != nil {
+		ss, _ = val.([]string)
+	}
+	return
+}
+
+// GetStringMap returns the value associated with the key as a map of interfaces.
+func (c *Context) GetStringMap(key string) (sm map[string]interface{}) {
+	if val, ok := c.Get(key); ok && val != nil {
+		sm, _ = val.(map[string]interface{})
+	}
+	return
+}
+
+// GetStringMapString returns the value associated with the key as a map of strings.
+func (c *Context) GetStringMapString(key string) (sms map[string]string) {
+	if val, ok := c.Get(key); ok && val != nil {
+		sms, _ = val.(map[string]string)
+	}
+	return
+}
+
+// GetStringMapStringSlice returns the value associated with the key as a map to a slice of strings.
+func (c *Context) GetStringMapStringSlice(key string) (smss map[string][]string) {
+	if val, ok := c.Get(key); ok && val != nil {
+		smss, _ = val.(map[string][]string)
+	}
+	return
+}
+
+// Param returns the value of the URL param.
+// It is a shortcut for c.Params.ByName(key)
+//     router.GET("/user/:id", func(c *gin.Context) {
+//         // a GET request to /user/john
+//         id := c.Param("id") // id == "john"
+//     })
+func (c *Context) Param(key string) string {
+	return c.Params.ByName(key)
+}
+
+// Query returns the keyed url query value if it exists,
+// otherwise it returns an empty string `("")`.
+// It is shortcut for `c.Request.URL.Query().Get(key)`
+//     GET /path?id=1234&name=Manu&value=
+// 	   c.Query("id") == "1234"
+// 	   c.Query("name") == "Manu"
+// 	   c.Query("value") == ""
+// 	   c.Query("wtf") == ""
+func (c *Context) Query(key string) string {
+	value, _ := c.GetQuery(key)
+	return value
+}
+
+// DefaultQuery returns the keyed url query value if it exists,
+// otherwise it returns the specified defaultValue string.
+// See: Query() and GetQuery() for further information.
+//     GET /?name=Manu&lastname=
+//     c.DefaultQuery("name", "unknown") == "Manu"
+//     c.DefaultQuery("id", "none") == "none"
+//     c.DefaultQuery("lastname", "none") == ""
+func (c *Context) DefaultQuery(key, defaultValue string) string {
+	if value, ok := c.GetQuery(key); ok {
+		return value
+	}
+	return defaultValue
+}
+
+// GetQuery is like Query(), it returns the keyed url query value
+// if it exists `(value, true)` (even when the value is an empty string),
+// otherwise it returns `("", false)`.
+// It is shortcut for `c.Request.URL.Query().Get(key)`
+//     GET /?name=Manu&lastname=
+//     ("Manu", true) == c.GetQuery("name")
+//     ("", false) == c.GetQuery("id")
+//     ("", true) == c.GetQuery("lastname")
+func (c *Context) GetQuery(key string) (string, bool) {
+	if values, ok := c.GetQueryArray(key); ok {
+		return values[0], ok
+	}
+	return "", false
+}
+
+// QueryArray returns a slice of strings for a given query key.
+// The length of the slice depends on the number of params with the given key.
+func (c *Context) QueryArray(key string) []string {
+	values, _ := c.GetQueryArray(key)
+	return values
+}
+
+func (c *Context) getQueryCache() {
+	if c.queryCache == nil {
+		c.queryCache = c.Request.URL.Query()
+	}
+}
+
+// GetQueryArray returns a slice of strings for a given query key, plus
+// a boolean value whether at least one value exists for the given key.
+func (c *Context) GetQueryArray(key string) ([]string, bool) {
+	c.getQueryCache()
+	if values, ok := c.queryCache[key]; ok && len(values) > 0 {
+		return values, true
+	}
+	return []string{}, false
+}
+
+// QueryMap returns a map for a given query key.
+func (c *Context) QueryMap(key string) map[string]string {
+	dicts, _ := c.GetQueryMap(key)
+	return dicts
+}
+
+// GetQueryMap returns a map for a given query key, plus a boolean value
+// whether at least one value exists for the given key.
+func (c *Context) GetQueryMap(key string) (map[string]string, bool) {
+	c.getQueryCache()
+	return c.get(c.queryCache, key)
+}
+
+// get is an internal method and returns a map which satisfy conditions.
+func (c *Context) get(m map[string][]string, key string) (map[string]string, bool) {
+	dicts := make(map[string]string)
+	exist := false
+	for k, v := range m {
+		if i := strings.IndexByte(k, '['); i >= 1 && k[0:i] == key {
+			if j := strings.IndexByte(k[i+1:], ']'); j >= 1 {
+				exist = true
+				dicts[k[i+1:][:j]] = v[0]
+			}
+		}
+	}
+	return dicts, exist
 }
 
 // GetHeader returns value from request headers.

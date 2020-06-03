@@ -28,6 +28,11 @@
             <set />
           </value>
         </entry>
+        <entry key="$PROJECT_DIR$/internal/common/tree.go">
+          <value>
+            <set />
+          </value>
+        </entry>
         <entry key="$PROJECT_DIR$/internal/common/utils.go">
           <value>
             <set />
@@ -44,6 +49,11 @@
           </value>
         </entry>
         <entry key="$PROJECT_DIR$/render/render.go">
+          <value>
+            <set />
+          </value>
+        </entry>
+        <entry key="E:/go_projects/gin-master/context.go">
           <value>
             <set />
           </value>

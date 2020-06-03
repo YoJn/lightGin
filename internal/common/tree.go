@@ -21,6 +21,13 @@ func (ps Params) Get(name string) (string, bool) {
 	return "", false
 }
 
+// ByName returns the value of the first Param which key matches the given name.
+// If no matching Param is found, an empty string is returned.
+func (ps Params) ByName(name string) (va string) {
+	va, _ = ps.Get(name)
+	return
+}
+
 type nodeType uint8
 
 // 路由类型 比如 /device/{id}
