@@ -52,6 +52,7 @@ type Context struct {
 
 	queryCache url.Values
 	formCache  url.Values
+	Errors     errorMsgs
 }
 
 // reset 重置context
@@ -498,6 +499,36 @@ func (c *Context) SaveUploadedFile(file *multipart.FileHeader, dst string) error
 
 	_, err = io.Copy(out, src)
 	return err
+}
+
+func (c *Context) Error(err error) *Error {
+	if err == nil {
+		panic("err is nil")
+	}
+
+	parsedError, ok := err.(*Error)
+	if !ok {
+		parsedError = &Error{
+			Err:  err,
+			Type: ErrorTypePrivate,
+		}
+	}
+
+	c.Errors = append(c.Errors, parsedError)
+	return parsedError
+}
+
+// Bind checks the Content-Type to select a binding engine automatically,
+// Depending the "Content-Type" header different bindings are used:
+//     "application/json" --> JSON binding
+//     "application/xml"  --> XML binding
+// otherwise --> returns an error.
+// It parses the request's body as JSON if Content-Type == "application/json" using JSON or XML as a JSON input.
+// It decodes the json payload into the struct specified as a pointer.
+// It writes a 400 error and sets Content-Type header "text/plain" in the response if input is not valid.
+func (c *Context) Bind(obj interface{}) error {
+	b := common.Default(c.Request.Method, c.ContentType())
+	return c.MustBindWith(obj, b)
 }
 
 // SetCookie adds a Set-Cookie header to the ResponseWriter's headers.
