@@ -1,13 +1,18 @@
 package lightGin
 
 import (
-	"github.com/YoJn/lightGin/render"
+	"io"
 	"io/ioutil"
 	"math"
+	"mime/multipart"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/YoJn/lightGin/render"
 
 	"github.com/YoJn/lightGin/internal/common"
 )
@@ -36,6 +41,11 @@ type Context struct {
 	fullPath string
 	index    int8
 
+	engine *Engine
+	params *common.Params
+
+	mu sync.RWMutex
+
 	Keys map[string]interface{}
 
 	Accepted []string
@@ -60,18 +70,23 @@ func (c *Context) reset() {
 
 // Copy deep copy 一个新的
 func (c *Context) Copy() *Context {
-	var cp = *c
+	cp := Context{
+		writerEntity: c.writerEntity,
+		Request:      c.Request,
+		Params:       c.Params,
+		engine:       c.engine,
+	}
 	cp.writerEntity.ResponseWriter = nil
 	cp.Writer = &cp.writerEntity
-	//cp.index = abortIndex
+	cp.index = abortIndex
 	cp.handlers = nil
 	cp.Keys = map[string]interface{}{}
 	for k, v := range c.Keys {
 		cp.Keys[k] = v
 	}
-	//paramCopy := make([]Param, len(cp.Params))
-	//copy(paramCopy, cp.Params)
-	//cp.Params = paramCopy
+	paramCopy := make([]common.Param, len(cp.Params))
+	copy(paramCopy, cp.Params)
+	cp.Params = paramCopy
 	return &cp
 }
 
@@ -370,6 +385,119 @@ func (c *Context) GetHeader(key string) string {
 // GetRawData return stream data.
 func (c *Context) GetRawData() ([]byte, error) {
 	return ioutil.ReadAll(c.Request.Body)
+}
+
+// PostForm returns the specified key from a POST urlencoded form or multipart form
+// when it exists, otherwise it returns an empty string `("")`.
+func (c *Context) PostForm(key string) string {
+	value, _ := c.GetPostForm(key)
+	return value
+}
+
+// DefaultPostForm returns the specified key from a POST urlencoded form or multipart form
+// when it exists, otherwise it returns the specified defaultValue string.
+// See: PostForm() and GetPostForm() for further information.
+func (c *Context) DefaultPostForm(key, defaultValue string) string {
+	if value, ok := c.GetPostForm(key); ok {
+		return value
+	}
+	return defaultValue
+}
+
+// GetPostForm is like PostForm(key). It returns the specified key from a POST urlencoded
+// form or multipart form when it exists `(value, true)` (even when the value is an empty string),
+// otherwise it returns ("", false).
+// For example, during a PATCH request to update the user's email:
+//     email=mail@example.com  -->  ("mail@example.com", true) := GetPostForm("email") // set email to "mail@example.com"
+// 	   email=                  -->  ("", true) := GetPostForm("email") // set email to ""
+//                             -->  ("", false) := GetPostForm("email") // do nothing with email
+func (c *Context) GetPostForm(key string) (string, bool) {
+	if values, ok := c.GetPostFormArray(key); ok {
+		return values[0], ok
+	}
+	return "", false
+}
+
+// PostFormArray returns a slice of strings for a given form key.
+// The length of the slice depends on the number of params with the given key.
+func (c *Context) PostFormArray(key string) []string {
+	values, _ := c.GetPostFormArray(key)
+	return values
+}
+
+func (c *Context) initFormCache() {
+	if c.formCache == nil {
+		c.formCache = make(url.Values)
+		req := c.Request
+		if err := req.ParseMultipartForm(c.engine.MaxMultipartMemory); err != nil {
+			if err != http.ErrNotMultipart {
+				//todo
+				//debugPrint("error on parse multipart form array: %v", err)
+			}
+		}
+		c.formCache = req.PostForm
+	}
+}
+
+// GetPostFormArray returns a slice of strings for a given form key, plus
+// a boolean value whether at least one value exists for the given key.
+func (c *Context) GetPostFormArray(key string) ([]string, bool) {
+	c.initFormCache()
+	if values := c.formCache[key]; len(values) > 0 {
+		return values, true
+	}
+	return []string{}, false
+}
+
+// PostFormMap returns a map for a given form key.
+func (c *Context) PostFormMap(key string) map[string]string {
+	dicts, _ := c.GetPostFormMap(key)
+	return dicts
+}
+
+// GetPostFormMap returns a map for a given form key, plus a boolean value
+// whether at least one value exists for the given key.
+func (c *Context) GetPostFormMap(key string) (map[string]string, bool) {
+	c.initFormCache()
+	return c.get(c.formCache, key)
+}
+
+// FormFile returns the first file for the provided form key.
+func (c *Context) FormFile(name string) (*multipart.FileHeader, error) {
+	if c.Request.MultipartForm == nil {
+		if err := c.Request.ParseMultipartForm(c.engine.MaxMultipartMemory); err != nil {
+			return nil, err
+		}
+	}
+	_, fh, err := c.Request.FormFile(name)
+	if err != nil {
+		return nil, err
+	}
+	return fh, err
+}
+
+// MultipartForm is the parsed multipart form, including file uploads.
+func (c *Context) MultipartForm() (*multipart.Form, error) {
+	err := c.Request.ParseMultipartForm(c.engine.MaxMultipartMemory)
+	return c.Request.MultipartForm, err
+}
+
+// SaveUploadedFile uploads the form file to specific dst.
+func (c *Context) SaveUploadedFile(file *multipart.FileHeader, dst string) error {
+	src, err := file.Open()
+	if err != nil {
+		return err
+	}
+	defer src.Close()
+
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, src)
+	return err
 }
 
 // SetCookie adds a Set-Cookie header to the ResponseWriter's headers.
