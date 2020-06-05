@@ -23,6 +23,20 @@ type Binding interface {
 	Bind(*http.Request, interface{}) error
 }
 
+// BindingUri adds BindUri method to Binding. BindUri is similar with Bind,
+// but it read the Params.
+type BindingUri interface {
+	Name() string
+	BindUri(map[string][]string, interface{}) error
+}
+
+// BindingBody adds BindBody method to Binding. BindBody is similar with Bind,
+// but it reads the body from supplied bytes instead of req.Body.
+type BindingBody interface {
+	Binding
+	BindBody([]byte, interface{}) error
+}
+
 // Default returns the appropriate Binding instance based on the HTTP method
 // and the content type.
 func Default(method, contentType string) Binding {
