@@ -1,16 +1,23 @@
 package lightGin
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"math"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/gin-contrib/sse"
+
+	"github.com/YoJn/lightGin/binding"
 
 	"github.com/YoJn/lightGin/render"
 
@@ -20,14 +27,14 @@ import (
 const abortIndex int8 = math.MaxInt8 / 2
 
 const (
-	MIMEJSON              = common.MIMEJSON
-	MIMEHTML              = common.MIMEHTML
-	MIMEXML               = common.MIMEXML
-	MIMEXML2              = common.MIMEXML2
-	MIMEPlain             = common.MIMEPlain
-	MIMEPOSTForm          = common.MIMEPOSTForm
-	MIMEMultipartPOSTForm = common.MIMEMultipartPOSTForm
-	MIMEYAML              = common.MIMEYAML
+	MIMEJSON              = binding.MIMEJSON
+	MIMEHTML              = binding.MIMEHTML
+	MIMEXML               = binding.MIMEXML
+	MIMEXML2              = binding.MIMEXML2
+	MIMEPlain             = binding.MIMEPlain
+	MIMEPOSTForm          = binding.MIMEPOSTForm
+	MIMEMultipartPOSTForm = binding.MIMEMultipartPOSTForm
+	MIMEYAML              = binding.MIMEYAML
 	BodyBytesKey          = "_yojn/lightGin/babibabu"
 )
 
@@ -53,6 +60,18 @@ type Context struct {
 	queryCache url.Values
 	formCache  url.Values
 	Errors     errorMsgs
+}
+
+// Set is used to store a new key/value pair exclusively for this context.
+// It also lazy initializes  c.Keys if it was not used previously.
+func (c *Context) Set(key string, value interface{}) {
+	c.mu.Lock()
+	if c.Keys == nil {
+		c.Keys = make(map[string]interface{})
+	}
+
+	c.Keys[key] = value
+	c.mu.Unlock()
 }
 
 // reset 重置context
@@ -166,10 +185,6 @@ func (c *Context) Header(key, value string) {
 		return
 	}
 	c.Writer.Header().Set(key, value)
-}
-
-func (c *Context) requestHeader(key string) string {
-	return c.Request.Header.Get(key)
 }
 
 // Get returns the value for the given key, ie: (value, true).
@@ -527,8 +542,141 @@ func (c *Context) Error(err error) *Error {
 // It decodes the json payload into the struct specified as a pointer.
 // It writes a 400 error and sets Content-Type header "text/plain" in the response if input is not valid.
 func (c *Context) Bind(obj interface{}) error {
-	b := common.Default(c.Request.Method, c.ContentType())
+	b := binding.Default(c.Request.Method, c.ContentType())
 	return c.MustBindWith(obj, b)
+}
+
+// BindJSON is a shortcut for c.MustBindWith(obj, binding.JSON).
+func (c *Context) BindJSON(obj interface{}) error {
+	return c.MustBindWith(obj, binding.JSON)
+}
+
+// BindXML is a shortcut for c.MustBindWith(obj, binding.BindXML).
+func (c *Context) BindXML(obj interface{}) error {
+	return c.MustBindWith(obj, binding.XML)
+}
+
+// BindQuery is a shortcut for c.MustBindWith(obj, binding.Query).
+func (c *Context) BindQuery(obj interface{}) error {
+	return c.MustBindWith(obj, binding.Query)
+}
+
+// BindHeader is a shortcut for c.MustBindWith(obj, binding.Header).
+func (c *Context) BindHeader(obj interface{}) error {
+	return c.MustBindWith(obj, binding.Header)
+}
+
+// BindUri binds the passed struct pointer using binding.Uri.
+// It will abort the request with HTTP 400 if any error occurs.
+func (c *Context) BindUri(obj interface{}) error {
+	if err := c.ShouldBindUri(obj); err != nil {
+		c.AbortWithError(http.StatusBadRequest, err).SetType(ErrorTypeBind) // nolint: errcheck
+		return err
+	}
+	return nil
+}
+
+// ShouldBindUri binds the passed struct pointer using the specified binding engine.
+func (c *Context) ShouldBindUri(obj interface{}) error {
+	m := make(map[string][]string)
+	for _, v := range c.Params {
+		m[v.Key] = []string{v.Value}
+	}
+	return binding.Uri.BindUri(m, obj)
+}
+
+// ShouldBindBodyWith is similar with ShouldBindWith, but it stores the request
+// body into the context, and reuse when it is called again.
+//
+// NOTE: This method reads the body before binding. So you should use
+// ShouldBindWith for better performance if you need to call only once.
+func (c *Context) ShouldBindBodyWith(obj interface{}, bb binding.BindingBody) (err error) {
+	var body []byte
+	if cb, ok := c.Get(BodyBytesKey); ok {
+		if cbb, ok := cb.([]byte); ok {
+			body = cbb
+		}
+	}
+	if body == nil {
+		body, err = ioutil.ReadAll(c.Request.Body)
+		if err != nil {
+			return err
+		}
+		c.Set(BodyBytesKey, body)
+	}
+	return bb.BindBody(body, obj)
+}
+
+// ShouldBindWith binds the passed struct pointer using the specified binding engine.
+// See the binding package.
+func (c *Context) ShouldBindWith(obj interface{}, b binding.Binding) error {
+	return b.Bind(c.Request, obj)
+}
+
+// AbortWithError calls `AbortWithStatus()` and `Error()` internally.
+// This method stops the chain, writes the status code and pushes the specified error to `c.Errors`.
+// See Context.Error() for more details.
+func (c *Context) AbortWithError(code int, err error) *Error {
+	c.AbortWithStatus(code)
+	return c.Error(err)
+}
+
+// MustBindWith binds the passed struct pointer using the specified binding engine.
+// It will abort the request with HTTP 400 if any error occurs.
+// See the binding package.
+func (c *Context) MustBindWith(obj interface{}, b binding.Binding) error {
+	if err := c.ShouldBindWith(obj, b); err != nil {
+		c.AbortWithError(http.StatusBadRequest, err).SetType(ErrorTypeBind) // nolint: errcheck
+		return err
+	}
+	return nil
+}
+
+// ClientIP implements a best effort algorithm to return the real client IP, it parses
+// X-Real-IP and X-Forwarded-For in order to work properly with reverse-proxies such us: nginx or haproxy.
+// Use X-Forwarded-For before X-Real-Ip as nginx uses X-Real-Ip with the proxy's IP.
+func (c *Context) ClientIP() string {
+	if c.engine.ForwardedByClientIP {
+		clientIP := c.requestHeader("X-Forwarded-For")
+		clientIP = strings.TrimSpace(strings.Split(clientIP, ",")[0])
+		if clientIP == "" {
+			clientIP = strings.TrimSpace(c.requestHeader("X-Real-Ip"))
+		}
+		if clientIP != "" {
+			return clientIP
+		}
+	}
+
+	if c.engine.AppEngine {
+		if addr := c.requestHeader("X-Appengine-Remote-Addr"); addr != "" {
+			return addr
+		}
+	}
+
+	if ip, _, err := net.SplitHostPort(strings.TrimSpace(c.Request.RemoteAddr)); err == nil {
+		return ip
+	}
+
+	return ""
+}
+
+// ContentType returns the Content-Type header of the request.
+func (c *Context) ContentType() string {
+	return common.FilterFlags(c.requestHeader("Content-Type"))
+}
+
+// IsWebsocket returns true if the request headers indicate that a websocket
+// handshake is being initiated by the client.
+func (c *Context) IsWebsocket() bool {
+	if strings.Contains(strings.ToLower(c.requestHeader("Connection")), "upgrade") &&
+		strings.EqualFold(c.requestHeader("Upgrade"), "websocket") {
+		return true
+	}
+	return false
+}
+
+func (c *Context) requestHeader(key string) string {
+	return c.Request.Header.Get(key)
 }
 
 // SetCookie adds a Set-Cookie header to the ResponseWriter's headers.
@@ -599,4 +747,170 @@ func (c *Context) Render(code int, r render.Render) {
 // It also sets the Content-Type as "application/json".
 func (c *Context) JSON(code int, obj interface{}) {
 	c.Render(code, render.JSON{Data: obj})
+}
+
+// XML serializes the given struct as XML into the response body.
+// It also sets the Content-Type as "application/xml".
+func (c *Context) XML(code int, obj interface{}) {
+	c.Render(code, render.XML{Data: obj})
+}
+
+// String writes the given string into the response body.
+func (c *Context) String(code int, format string, values ...interface{}) {
+	c.Render(code, render.String{Format: format, Data: values})
+}
+
+// Redirect returns a HTTP redirect to the specific location.
+func (c *Context) Redirect(code int, location string) {
+	c.Render(-1, render.Redirect{
+		Code:     code,
+		Location: location,
+		Request:  c.Request,
+	})
+}
+
+// Data writes some data into the body stream and updates the HTTP code.
+func (c *Context) Data(code int, contentType string, data []byte) {
+	c.Render(code, render.Data{
+		ContentType: contentType,
+		Data:        data,
+	})
+}
+
+// DataFromReader writes the specified reader into the body stream and updates the HTTP code.
+func (c *Context) DataFromReader(code int, contentLength int64, contentType string, reader io.Reader, extraHeaders map[string]string) {
+	c.Render(code, render.Reader{
+		Headers:       extraHeaders,
+		ContentType:   contentType,
+		ContentLength: contentLength,
+		Reader:        reader,
+	})
+}
+
+// File writes the specified file into the body stream in a efficient way.
+func (c *Context) File(filepath string) {
+	http.ServeFile(c.Writer, c.Request, filepath)
+}
+
+// FileFromFS writes the specified file from http.FileSystem into the body stream in an efficient way.
+func (c *Context) FileFromFS(filepath string, fs http.FileSystem) {
+	defer func(old string) {
+		c.Request.URL.Path = old
+	}(c.Request.URL.Path)
+
+	c.Request.URL.Path = filepath
+
+	http.FileServer(fs).ServeHTTP(c.Writer, c.Request)
+}
+
+// FileAttachment writes the specified file into the body stream in an efficient way
+// On the client side, the file will typically be downloaded with the given filename
+func (c *Context) FileAttachment(filepath, filename string) {
+	c.Writer.Header().Set("content-disposition", fmt.Sprintf("attachment; filename=\"%s\"", filename))
+	http.ServeFile(c.Writer, c.Request, filepath)
+}
+
+// SSEvent writes a Server-Sent Event into the body stream.
+func (c *Context) SSEvent(name string, message interface{}) {
+	c.Render(-1, sse.Event{
+		Event: name,
+		Data:  message,
+	})
+}
+
+// Negotiate contains all negotiations data.
+type Negotiate struct {
+	Offered  []string
+	HTMLName string
+	JSONData interface{}
+	XMLData  interface{}
+	Data     interface{}
+}
+
+// Negotiate calls different Render according acceptable Accept format.
+func (c *Context) Negotiate(code int, config Negotiate) {
+	switch c.NegotiateFormat(config.Offered...) {
+	case binding.MIMEJSON:
+		data := common.ChooseData(config.JSONData, config.Data)
+		c.JSON(code, data)
+
+	case binding.MIMEXML:
+		data := common.ChooseData(config.XMLData, config.Data)
+		c.XML(code, data)
+
+	default:
+		c.AbortWithError(http.StatusNotAcceptable, errors.New("the accepted formats are not offered by the server")) // nolint: errcheck
+	}
+}
+
+// NegotiateFormat returns an acceptable Accept format.
+func (c *Context) NegotiateFormat(offered ...string) string {
+	common.Assert1(len(offered) > 0, "you must provide at least one offer")
+
+	if c.Accepted == nil {
+		c.Accepted = common.ParseAccept(c.requestHeader("Accept"))
+	}
+	if len(c.Accepted) == 0 {
+		return offered[0]
+	}
+	for _, accepted := range c.Accepted {
+		for _, offer := range offered {
+			// According to RFC 2616 and RFC 2396, non-ASCII characters are not allowed in headers,
+			// therefore we can just iterate over the string without casting it into []rune
+			i := 0
+			for ; i < len(accepted); i++ {
+				if accepted[i] == '*' || offer[i] == '*' {
+					return offer
+				}
+				if accepted[i] != offer[i] {
+					break
+				}
+			}
+			if i == len(accepted) {
+				return offer
+			}
+		}
+	}
+	return ""
+}
+
+// SetAccepted sets Accept header data.
+func (c *Context) SetAccepted(formats ...string) {
+	c.Accepted = formats
+}
+
+/************************************/
+/***** GOLANG.ORG/X/NET/CONTEXT *****/
+/************************************/
+
+// Deadline always returns that there is no deadline (ok==false),
+// maybe you want to use Request.Context().Deadline() instead.
+func (c *Context) Deadline() (deadline time.Time, ok bool) {
+	return
+}
+
+// Done always returns nil (chan which will wait forever),
+// if you want to abort your work when the connection was closed
+// you should use Request.Context().Done() instead.
+func (c *Context) Done() <-chan struct{} {
+	return nil
+}
+
+// Err always returns nil, maybe you want to use Request.Context().Err() instead.
+func (c *Context) Err() error {
+	return nil
+}
+
+// Value returns the value associated with this context for key, or nil
+// if no value is associated with key. Successive calls to Value with
+// the same key returns the same result.
+func (c *Context) Value(key interface{}) interface{} {
+	if key == 0 {
+		return c.Request
+	}
+	if keyAsString, ok := key.(string); ok {
+		val, _ := c.Get(keyAsString)
+		return val
+	}
+	return nil
 }

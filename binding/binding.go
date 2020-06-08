@@ -1,6 +1,8 @@
-package common
+package binding
 
-import "net/http"
+import (
+	"net/http"
+)
 
 // 定义header里面的 content-type
 const (
@@ -37,24 +39,29 @@ type BindingBody interface {
 	BindBody([]byte, interface{}) error
 }
 
+var (
+	JSON          = jsonBinding{}
+	XML           = xmlBinding{}
+	Form          = formBinding{}
+	Query         = queryBinding{}
+	FormPost      = formPostBinding{}
+	FormMultipart = formMultipartBinding{}
+	Uri           = uriBinding{}
+	Header        = headerBinding{}
+)
+
 // Default returns the appropriate Binding instance based on the HTTP method
 // and the content type.
 func Default(method, contentType string) Binding {
 	if method == http.MethodGet {
 		return Form
 	}
-
 	switch contentType {
 	case MIMEJSON:
 		return JSON
 	case MIMEXML, MIMEXML2:
 		return XML
 	case MIMEPROTOBUF:
-		return ProtoBuf
-	case MIMEMSGPACK, MIMEMSGPACK2:
-		return MsgPack
-	case MIMEYAML:
-		return YAML
 	case MIMEMultipartPOSTForm:
 		return FormMultipart
 	default: // case MIMEPOSTForm:
