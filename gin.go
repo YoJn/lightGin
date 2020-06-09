@@ -1,9 +1,10 @@
 package lightGin
 
 import (
-	"github.com/YoJn/lightGin/internal/common"
 	"html/template"
 	"sync"
+
+	"github.com/YoJn/lightGin/internal/common"
 )
 
 // HandlerFunc middleware 包括处理逻辑
@@ -34,7 +35,7 @@ type RoutesInfo []RouteInfo
 // Engine is the framework's instance, it contains the muxer, middleware and configuration settings.
 // Create an instance of Engine, by using New() or Default()
 type Engine struct {
-	//RouterGroup
+	RouterGroup
 
 	// Enables automatic redirection if the current route can't be matched but a
 	// handler for the path with (without) the trailing slash exists.
@@ -86,5 +87,26 @@ type Engine struct {
 	noRoute          HandlersChain
 	noMethod         HandlersChain
 	pool             sync.Pool
-	trees            common.MethodTrees
+	trees            MethodTrees
+}
+
+func (engine *Engine) addRoute(method, path string, handlers HandlersChain) {
+	common.Assert1(path[0] == '/', "path must begin with '/'")
+	common.Assert1(method != "", "HTTP method can not be empty")
+	common.Assert1(len(handlers) > 0, "there must be at least one handler")
+
+	//debugPrintRoute(method, path, handlers)
+
+	root := engine.trees.get(method)
+	if root == nil {
+		root = new(node)
+		root.fullPath = "/"
+		engine.trees = append(engine.trees, methodTree{method: method, root: root})
+	}
+	root.addRoute(path, handlers)
+
+	// Update maxParams
+	if paramsCount := countParams(path); paramsCount > engine.maxParams {
+		engine.maxParams = paramsCount
+	}
 }

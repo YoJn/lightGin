@@ -1,6 +1,15 @@
-package common
+package lightGin
 
-import "github.com/YoJn/lightGin"
+import (
+	"bytes"
+	"reflect"
+	"unsafe"
+)
+
+var (
+	strColon = []byte(":")
+	strStar  = []byte("*")
+)
 
 // Param URL 的参数
 type Param struct {
@@ -28,14 +37,71 @@ func (ps Params) ByName(name string) (va string) {
 	return
 }
 
-type MethodTree struct {
-	Method string
-	Root   *node
+type methodTree struct {
+	method string
+	root   *node
 }
 
-type MethodTrees []MethodTree
+type methodTrees []methodTree
 
 type nodeType uint8
+
+func (trees methodTrees) get(method string) *node {
+	for _, tree := range trees {
+		if tree.method == method {
+			return tree.root
+		}
+	}
+	return nil
+}
+
+func min(a, b int) int {
+	if a <= b {
+		return a
+	}
+	return b
+}
+
+func longestCommonPrefix(a, b string) int {
+	i := 0
+	max := min(len(a), len(b))
+	for i < max && a[i] == b[i] {
+		i++
+	}
+	return i
+}
+
+// bytesToStr converts byte slice to a string without memory allocation.
+// See https://groups.google.com/forum/#!msg/Golang-Nuts/ENgbUzYvCuU/90yGx7GUAgAJ .
+//
+// Note it may break if string and/or slice header will change
+// in the future go versions.
+func bytesToStr(b []byte) string {
+	return *(*string)(unsafe.Pointer(&b))
+}
+
+// strToBytes converts string to a byte slice without memory allocation.
+//
+// Note it may break if string and/or slice header will change
+// in the future go versions.
+func strToBytes(s string) (b []byte) {
+	/* #nosec G103 */
+	bh := (*reflect.SliceHeader)(unsafe.Pointer(&b))
+	/* #nosec G103 */
+	sh := *(*reflect.StringHeader)(unsafe.Pointer(&s))
+	bh.Data = sh.Data
+	bh.Len = sh.Len
+	bh.Cap = sh.Len
+	return b
+}
+
+func countParams(path string) uint16 {
+	var n uint
+	s := strToBytes(path)
+	n += uint(bytes.Count(s, strColon))
+	n += uint(bytes.Count(s, strStar))
+	return uint16(n)
+}
 
 // 路由类型 比如 /device/{id}
 const (
@@ -49,7 +115,7 @@ type node struct {
 	path      string
 	indices   string
 	children  []*node
-	handlers  lightGin.HandlersChain
+	handlers  HandlersChain
 	fullPath  string
 	priority  uint32
 	nType     nodeType
@@ -107,7 +173,7 @@ func findWildcard(path string) (wildcard string, i int, valid bool) {
 }
 
 // insertChild 插入一个子节点，注意的是对通配符的处理
-func (n *node) insertChild(path string, fullPath string, handlers lightGin.HandlersChain) {
+func (n *node) insertChild(path string, fullPath string, handlers HandlersChain) {
 	for {
 		// Find prefix until first wildcard
 		wildcard, i, valid := findWildcard(path)

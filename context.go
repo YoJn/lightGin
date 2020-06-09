@@ -43,13 +43,13 @@ type Context struct {
 	Request      *http.Request
 	Writer       common.ResponseWriter
 
-	Params   common.Params
+	Params   Params
 	handlers HandlersChain
 	fullPath string
 	index    int8
 
 	engine *Engine
-	params *common.Params
+	params *Params
 
 	mu sync.RWMutex
 
@@ -104,7 +104,7 @@ func (c *Context) Copy() *Context {
 	for k, v := range c.Keys {
 		cp.Keys[k] = v
 	}
-	paramCopy := make([]common.Param, len(cp.Params))
+	paramCopy := make([]Param, len(cp.Params))
 	copy(paramCopy, cp.Params)
 	cp.Params = paramCopy
 	return &cp
