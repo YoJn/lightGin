@@ -7,6 +7,10 @@ import (
 	"github.com/YoJn/lightGin/internal/common"
 )
 
+const defaultMultipartMemory = 32 << 20 // 32 MB
+
+var defaultAppEngine bool
+
 // HandlerFunc middleware 包括处理逻辑
 type HandlerFunc func(*Context)
 
@@ -87,7 +91,60 @@ type Engine struct {
 	noRoute          HandlersChain
 	noMethod         HandlersChain
 	pool             sync.Pool
-	trees            MethodTrees
+	trees            methodTrees
+	maxParams        uint16
+
+	RemoveExtraSlash bool
+}
+
+var _ IRouter = &Engine{}
+
+// New returns a new blank Engine instance without any middleware attached.
+// By default the configuration is:
+// - RedirectTrailingSlash:  true
+// - RedirectFixedPath:      false
+// - HandleMethodNotAllowed: false
+// - ForwardedByClientIP:    true
+// - UseRawPath:             false
+// - UnescapePathValues:     true
+func New() *Engine {
+	//debugPrintWARNINGNew()
+	engine := &Engine{
+		RouterGroup: RouterGroup{
+			Handlers: nil,
+			basePath: "/",
+			root:     true,
+		},
+		FuncMap:                template.FuncMap{},
+		RedirectTrailingSlash:  true,
+		RedirectFixedPath:      false,
+		HandleMethodNotAllowed: false,
+		ForwardedByClientIP:    true,
+		AppEngine:              defaultAppEngine,
+		UseRawPath:             false,
+		RemoveExtraSlash:       false,
+		UnescapePathValues:     true,
+		MaxMultipartMemory:     defaultMultipartMemory,
+		trees:                  make(methodTrees, 0, 9),
+	}
+	engine.RouterGroup.engine = engine
+	engine.pool.New = func() interface{} {
+		return engine.allocateContext()
+	}
+	return engine
+}
+
+// Default returns an Engine instance with the Logger and Recovery middleware already attached.
+func Default() *Engine {
+	//debugPrintWARNINGDefault()
+	engine := New()
+	engine.Use(common.Logger(), Recovery())
+	return engine
+}
+
+func (engine *Engine) allocateContext() *Context {
+	v := make(Params, 0, engine.maxParams)
+	return &Context{engine: engine, params: &v}
 }
 
 func (engine *Engine) addRoute(method, path string, handlers HandlersChain) {

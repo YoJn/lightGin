@@ -8,6 +8,16 @@
             <set />
           </value>
         </entry>
+        <entry key="$PROJECT_DIR$/../gin/fs.go">
+          <value>
+            <set />
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/binding/form_mapping.go">
+          <value>
+            <set />
+          </value>
+        </entry>
         <entry key="$PROJECT_DIR$/binding/json.go">
           <value>
             <set />
@@ -38,12 +48,32 @@
             <set />
           </value>
         </entry>
+        <entry key="$PROJECT_DIR$/fs.go">
+          <value>
+            <set />
+          </value>
+        </entry>
         <entry key="$PROJECT_DIR$/gin.go">
           <value>
             <set />
           </value>
         </entry>
+        <entry key="$PROJECT_DIR$/go.mod">
+          <value>
+            <set />
+          </value>
+        </entry>
         <entry key="$PROJECT_DIR$/internal/common/binding.go">
+          <value>
+            <set />
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/internal/common/error.go">
+          <value>
+            <set />
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/internal/common/logger.go">
           <value>
             <set />
           </value>
@@ -68,12 +98,27 @@
             <set />
           </value>
         </entry>
+        <entry key="$PROJECT_DIR$/mode.go">
+          <value>
+            <set />
+          </value>
+        </entry>
         <entry key="$PROJECT_DIR$/render/json.go">
           <value>
             <set />
           </value>
         </entry>
         <entry key="$PROJECT_DIR$/render/render.go">
+          <value>
+            <set />
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/routegroup.go">
+          <value>
+            <set />
+          </value>
+        </entry>
+        <entry key="$PROJECT_DIR$/tree.go">
           <value>
             <set />
           </value>
