@@ -1,4 +1,4 @@
-package common
+package lightGin
 
 import (
 	"io"
@@ -41,7 +41,7 @@ type ResponseWriterEntity struct {
 var _ ResponseWriter = &ResponseWriterEntity{}
 
 // reset 初始化ResponseWriterEntity
-func (w *ResponseWriterEntity) reset(writer http.ResponseWriter) {
+func (w *ResponseWriterEntity) Reset(writer http.ResponseWriter) {
 	w.ResponseWriter = writer
 	w.size = noWritten
 	w.status = defaultStatus

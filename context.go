@@ -39,9 +39,9 @@ const (
 )
 
 type Context struct {
-	writerEntity common.ResponseWriterEntity
+	writerEntity ResponseWriterEntity
 	Request      *http.Request
-	Writer       common.ResponseWriter
+	Writer       ResponseWriter
 
 	Params   Params
 	handlers HandlersChain
