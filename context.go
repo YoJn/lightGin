@@ -448,7 +448,7 @@ func (c *Context) initFormCache() {
 		if err := req.ParseMultipartForm(c.engine.MaxMultipartMemory); err != nil {
 			if err != http.ErrNotMultipart {
 				//todo
-				//debugPrint("error on parse multipart form array: %v", err)
+				debugPrint("error on parse multipart form array: %v", err)
 			}
 		}
 		c.formCache = req.PostForm

@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path"
 	"sync"
 
 	"github.com/YoJn/lightGin/internal/common"
@@ -112,7 +113,7 @@ var _ IRouter = &Engine{}
 // - UseRawPath:             false
 // - UnescapePathValues:     true
 func New() *Engine {
-	//debugPrintWARNINGNew()
+	debugPrintWARNINGNew()
 	engine := &Engine{
 		RouterGroup: RouterGroup{
 			Handlers: nil,
@@ -140,7 +141,7 @@ func New() *Engine {
 
 // Default returns an Engine instance with the Logger and Recovery middleware already attached.
 func Default() *Engine {
-	//debugPrintWARNINGDefault()
+	debugPrintWARNINGDefault()
 	engine := New()
 	engine.Use(common.Logger(), common.Recovery())
 	return engine
@@ -186,7 +187,7 @@ func (engine *Engine) addRoute(method, path string, handlers HandlersChain) {
 	common.Assert1(method != "", "HTTP method can not be empty")
 	common.Assert1(len(handlers) > 0, "there must be at least one handler")
 
-	//debugPrintRoute(method, path, handlers)
+	debugPrintRoute(method, path, handlers)
 
 	root := engine.trees.get(method)
 	if root == nil {
@@ -228,16 +229,32 @@ func iterate(path, method string, routes RoutesInfo, root *node) RoutesInfo {
 	return routes
 }
 
+func resolveAddress(addr []string) string {
+	switch len(addr) {
+	case 0:
+		if port := os.Getenv("PORT"); port != "" {
+			debugPrint("Environment variable PORT=\"%s\"", port)
+			return ":" + port
+		}
+		debugPrint("Environment variable PORT is undefined. Using port :8080 by default")
+		return ":8080"
+	case 1:
+		return addr[0]
+	default:
+		panic("too many parameters")
+	}
+}
+
 // Run attaches the router to a http.Server and starts listening and serving HTTP requests.
 // It is a shortcut for http.ListenAndServe(addr, router)
 // Note: this method will block the calling goroutine indefinitely unless an error happens.
 func (engine *Engine) Run(addr ...string) (err error) {
 	defer func() {
-		//debugPrintError(err)
+		debugPrintError(err)
 	}()
 
 	address := resolveAddress(addr)
-	//debugPrint("Listening and serving HTTP on %s\n", address)
+	debugPrint("Listening and serving HTTP on %s\n", address)
 	err = http.ListenAndServe(address, engine)
 	return
 }
@@ -246,9 +263,9 @@ func (engine *Engine) Run(addr ...string) (err error) {
 // It is a shortcut for http.ListenAndServeTLS(addr, certFile, keyFile, router)
 // Note: this method will block the calling goroutine indefinitely unless an error happens.
 func (engine *Engine) RunTLS(addr, certFile, keyFile string) (err error) {
-	//debugPrint("Listening and serving HTTPS on %s\n", addr)
+	debugPrint("Listening and serving HTTPS on %s\n", addr)
 	defer func() {
-		//debugPrintError(err)
+		debugPrintError(err)
 	}()
 
 	err = http.ListenAndServeTLS(addr, certFile, keyFile, engine)
@@ -259,9 +276,9 @@ func (engine *Engine) RunTLS(addr, certFile, keyFile string) (err error) {
 // through the specified unix socket (ie. a file).
 // Note: this method will block the calling goroutine indefinitely unless an error happens.
 func (engine *Engine) RunUnix(file string) (err error) {
-	//debugPrint("Listening and serving HTTP on unix:/%s", file)
+	debugPrint("Listening and serving HTTP on unix:/%s", file)
 	defer func() {
-		//debugPrintError(err)
+		debugPrintError(err)
 	}()
 
 	listener, err := net.Listen("unix", file)
@@ -279,9 +296,9 @@ func (engine *Engine) RunUnix(file string) (err error) {
 // through the specified file descriptor.
 // Note: this method will block the calling goroutine indefinitely unless an error happens.
 func (engine *Engine) RunFd(fd int) (err error) {
-	//debugPrint("Listening and serving HTTP on fd@%d", fd)
+	debugPrint("Listening and serving HTTP on fd@%d", fd)
 	defer func() {
-		//debugPrintError(err)
+		debugPrintError(err)
 	}()
 
 	f := os.NewFile(uintptr(fd), fmt.Sprintf("fd@%d", fd))
@@ -297,9 +314,9 @@ func (engine *Engine) RunFd(fd int) (err error) {
 // RunListener attaches the router to a http.Server and starts listening and serving HTTP requests
 // through the specified net.Listener
 func (engine *Engine) RunListener(listener net.Listener) (err error) {
-	//debugPrint("Listening and serving HTTP on listener what's bind with address@%s", listener.Addr())
+	debugPrint("Listening and serving HTTP on listener what's bind with address@%s", listener.Addr())
 	defer func() {
-		//debugPrintError(err)
+		debugPrintError(err)
 	}()
 	err = http.Serve(listener, engine)
 	return
@@ -327,6 +344,11 @@ func (engine *Engine) HandleContext(c *Context) {
 
 	c.index = oldIndexValue
 }
+
+var (
+	default404Body = []byte("404 page not found")
+	default405Body = []byte("405 method not allowed")
+)
 
 func (engine *Engine) handleHTTPRequest(c *Context) {
 	httpMethod := c.Request.Method
@@ -400,11 +422,24 @@ func serveError(c *Context, code int, defaultMessage []byte) {
 		c.writerEntity.Header()["Content-Type"] = mimePlain
 		_, err := c.Writer.Write(defaultMessage)
 		if err != nil {
-			//debugPrint("cannot write message to writer during serve error: %v", err)
+			debugPrint("cannot write message to writer during serve error: %v", err)
 		}
 		return
 	}
 	c.writerEntity.WriteHeaderNow()
+}
+
+func redirectTrailingSlash(c *Context) {
+	req := c.Request
+	p := req.URL.Path
+	if prefix := path.Clean(c.Request.Header.Get("X-Forwarded-Prefix")); prefix != "." {
+		p = prefix + "/" + req.URL.Path
+	}
+	req.URL.Path = p + "/"
+	if length := len(p); length > 1 && p[length-1] == '/' {
+		req.URL.Path = p[:length-1]
+	}
+	redirectRequest(c)
 }
 
 func redirectFixedPath(c *Context, root *node, trailingSlash bool) bool {
@@ -421,14 +456,14 @@ func redirectFixedPath(c *Context, root *node, trailingSlash bool) bool {
 
 func redirectRequest(c *Context) {
 	req := c.Request
-	//rPath := req.URL.Path
+	rPath := req.URL.Path
 	rURL := req.URL.String()
 
 	code := http.StatusMovedPermanently // Permanent redirect, request with GET method
 	if req.Method != http.MethodGet {
 		code = http.StatusTemporaryRedirect
 	}
-	//debugPrint("redirecting request %d: %s --> %s", code, rPath, rURL)
+	debugPrint("redirecting request %d: %s --> %s", code, rPath, rURL)
 	http.Redirect(c.Writer, req, rURL, code)
 	c.writerEntity.WriteHeaderNow()
 }
